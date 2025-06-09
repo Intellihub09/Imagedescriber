@@ -184,13 +184,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Tailwind CSS** for the utility-first styling approach
 - **Vite** for the blazing-fast development experience
 
-## 📞 Support
 
-If you have any questions or need help:
-
-1. Check the [Issues](https://github.com/yourusername/ai-vision-analyzer/issues) page
-2. Create a new issue with detailed information
-3. Contact the maintainers
 
 ---
 
