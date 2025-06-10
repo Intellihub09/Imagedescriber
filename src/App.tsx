@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Upload, Camera, Sparkles, AlertCircle, CheckCircle, Zap, Eye, Brain, Stars } from 'lucide-react';
+import { Upload, Camera, Sparkles, AlertCircle, CheckCircle, Zap, Eye, Brain, Stars, LogIn, UserPlus } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import AuthModal from './components/AuthModal';
+import UserMenu from './components/UserMenu';
+import HistoryModal from './components/HistoryModal';
 
 const genAI = new GoogleGenerativeAI('AIzaSyCqLwSGt7fxpCJAeouzXateEMjpTz7a9pM');
 
@@ -12,7 +16,25 @@ function App() {
   const [error, setError] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [user, setUser] = useState<any>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -78,6 +100,25 @@ function App() {
     });
   };
 
+  const saveAnalysisToDatabase = async (imageName: string, imageUrl: string | null, aiDescription: string) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('photo_analyses')
+        .insert({
+          user_id: user.id,
+          image_name: imageName,
+          image_url: imageUrl,
+          ai_description: aiDescription,
+        });
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error saving analysis:', err);
+    }
+  };
+
   const generateDescription = async () => {
     if (!selectedImage) return;
 
@@ -103,6 +144,11 @@ function App() {
       const text = response.text();
       
       setDescription(text);
+
+      // Save to database if user is logged in
+      if (user) {
+        await saveAnalysisToDatabase(selectedImage.name, imagePreview, text);
+      }
     } catch (err) {
       setError('Failed to analyze the image. Please try again.');
       console.error('Error:', err);
@@ -119,6 +165,11 @@ function App() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const openAuthModal = (mode: 'signin' | 'signup') => {
+    setAuthMode(mode);
+    setAuthModalOpen(true);
   };
 
   return (
@@ -191,6 +242,32 @@ function App() {
         </div>
       </div>
 
+      {/* Top Navigation */}
+      <div className="relative z-20 container mx-auto px-4 py-6">
+        <div className="flex justify-end">
+          {user ? (
+            <UserMenu user={user} onViewHistory={() => setHistoryModalOpen(true)} />
+          ) : (
+            <div className="flex space-x-4">
+              <button
+                onClick={() => openAuthModal('signin')}
+                className="flex items-center space-x-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600/50 rounded-2xl px-6 py-3 text-white transition-all duration-300 group"
+              >
+                <LogIn className="h-5 w-5 text-cyan-400 group-hover:text-cyan-300" />
+                <span>Sign In</span>
+              </button>
+              <button
+                onClick={() => openAuthModal('signup')}
+                className="flex items-center space-x-2 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 rounded-2xl px-6 py-3 text-white transition-all duration-300 group"
+              >
+                <UserPlus className="h-5 w-5 group-hover:scale-110 transition-transform duration-300" />
+                <span>Sign Up</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Content */}
       <div className="relative z-10 container mx-auto px-4 py-8">
         {/* Ultra Stunning Header */}
@@ -228,6 +305,12 @@ function App() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400 font-bold animate-pulse-text"> advanced AI vision</span> to analyze your photos with 
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-yellow-400 font-bold animate-pulse-text"> unprecedented detail</span>
             </p>
+            {user && (
+              <p className="text-lg text-gray-300 mt-4">
+                Welcome back, <span className="text-cyan-400 font-semibold">{user.email?.split('@')[0]}</span>! 
+                Your analyses are automatically saved.
+              </p>
+            )}
             <div className="flex justify-center space-x-2 mt-4">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className={`w-2 h-2 rounded-full bg-gradient-to-r from-cyan-400 to-purple-400 animate-bounce`} style={{ animationDelay: `${i * 0.2}s` }}></div>
@@ -402,6 +485,15 @@ function App() {
                       <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse animation-delay-1000"></div>
                       <div className="w-3 h-3 bg-pink-400 rounded-full animate-pulse animation-delay-2000"></div>
                     </div>
+
+                    {user && (
+                      <div className="mt-8 p-4 bg-green-900/20 border border-green-500/30 rounded-2xl">
+                        <p className="text-green-300 text-sm flex items-center space-x-2">
+                          <CheckCircle className="h-4 w-4" />
+                          <span>Analysis saved to your history!</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -423,6 +515,20 @@ function App() {
           </p>
         </div>
       </div>
+
+      {/* Modals */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        mode={authMode}
+        onModeChange={setAuthMode}
+      />
+
+      <HistoryModal
+        isOpen={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        user={user}
+      />
     </div>
   );
 }
